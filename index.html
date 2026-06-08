@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>全通路巡店規劃系統 - Luke_Tian 設計</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap');
+        :root { --ttl-green: #006d33; --ttl-gold: #a68d5b; --ttl-bg: #f8faf9; }
+        body { font-family: 'Noto Sans TC', sans-serif; background-color: var(--ttl-bg); color: #1a202c; }
+        .dashboard-card { background: white; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.04); border: 1px solid #e2e8f0; }
+        .ttl-header-bar { border-left: 6px solid var(--ttl-green); padding-left: 1.5rem; }
+        .month-btn { transition: all 0.2s ease; border: 1px solid #e2e8f0; font-weight: 700; font-size: 12px; height: 42px; border-radius: 12px; background: white; }
+        .month-btn.active { background-color: var(--ttl-green); color: white; border-color: var(--ttl-green); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,109,51,0.25); }
+        .brand-logo { width: 55px; height: 26px; border-radius: 50px; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 9px; color: white; box-shadow: 0 3px 6px rgba(0,0,0,0.12); text-transform: uppercase; }
+        .group-tag { cursor: pointer; transition: all 0.2s; border-radius: 14px; border: 1px solid #e2e8f0; background: #fff; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; }
+        .group-tag.active { border-color: var(--ttl-green); background-color: #f0fdf4; color: var(--ttl-green); font-weight: 900; border-width: 2px; }
+        .c-grade-tag.active { background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%); color: white; border: none !important; }
+        .custom-checkbox { width: 22px; height: 22px; cursor: pointer; border-radius: 8px; border: 2px solid #cbd5e1; appearance: none; transition: all 0.2s; }
+        .custom-checkbox:checked { background-color: var(--ttl-green); border-color: var(--ttl-green); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white'%3E%3Cpath d='M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z'/%3E%3C/svg%3E"); background-size: 70% 70%; background-position: center; background-repeat: no-repeat; }
+        .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 500; align-items: center; justify-content: center; backdrop-filter: blur(8px); }
+        #customGpsPanel { display: none; position: absolute; top: 65px; right: 0; width: 320px; z-index: 150; border-top: 5px solid var(--ttl-gold); border-radius: 16px; overflow: hidden; }
+        .focus-gradient { background: linear-gradient(135deg, #006d33 0%, #004d24 100%); }
+    </style>
+</head>
+<body class="p-4 md:p-8 relative">
+
+    <div class="max-w-[1650px] mx-auto space-y-6">
+        <!-- Header -->
+        <header class="flex justify-between items-center bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
+            <div class="flex items-center space-x-6">
+                <div class="w-14 h-14 bg-[#006d33] rounded-2xl flex items-center justify-center text-white font-black text-xl shadow-lg rotate-3">MAP</div>
+                <div class="ttl-header-bar">
+                    <h1 class="text-2xl font-black text-slate-800 tracking-tight leading-none">巡店規劃管理系統 <span class="text-[#a68d5b] text-lg ml-1 font-mono">v7.2.1</span></h1>
+                    <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mt-2">
+                        系統設計師：<span class="text-slate-700 font-black underline underline-offset-4 decoration-[#a68d5b]">Luke_Tian</span> | 全通路旗艦版
+                    </p>
+                </div>
+            </div>
+            
+            <div class="flex items-center space-x-3 relative">
+                <div id="fileStatus" class="hidden px-4 py-2 bg-emerald-50 text-emerald-700 rounded-full border border-emerald-100 text-[10px] font-black uppercase tracking-tighter">數據載入中</div>
+                <button onclick="openModal('converterModal')" class="bg-amber-50 border border-amber-200 p-3 rounded-2xl text-amber-700 hover:bg-amber-100 transition-all text-xs font-black shadow-sm">座標注入 / 存檔</button>
+                <button onclick="toggleCustomGps()" class="bg-white border border-slate-200 p-3 rounded-2xl text-slate-600 hover:bg-slate-50 transition-all text-xs font-bold shadow-sm flex items-center">
+                    <svg class="w-4 h-4 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path></svg>座標補錄
+                </button>
+                <div id="customGpsPanel" class="dashboard-card p-6 shadow-2xl animate-in fade-in slide-in-from-top-4 duration-300">
+                    <div class="flex justify-between items-center mb-4 border-b pb-2">
+                        <h3 class="font-black text-xs text-[#a68d5b] uppercase">單筆快速補錄 <span id="customCount" class="ml-2 bg-[#a68d5b] text-white px-2 py-0.5 rounded-md text-[9px]">0</span></h3>
+                        <button onclick="toggleCustomGps()" class="text-slate-300 hover:text-slate-600"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"></path></svg></button>
+                    </div>
+                    <div class="space-y-3">
+                        <input type="text" id="customCode" placeholder="店家代碼" class="w-full px-4 py-2 bg-slate-50 rounded-xl text-xs outline-none border border-slate-200 focus:border-[#006d33]">
+                        <div class="grid grid-cols-2 gap-2">
+                            <input type="number" id="customLat" step="0.000001" placeholder="緯度" class="w-full px-4 py-2 bg-slate-50 rounded-xl text-xs border">
+                            <input type="number" id="customLng" step="0.000001" placeholder="經度" class="w-full px-4 py-2 bg-slate-50 rounded-xl text-xs border">
+                        </div>
+                        <button onclick="addCustomGPS()" class="w-full bg-[#006d33] text-white py-3 rounded-xl text-xs font-black shadow-lg">儲存並應用</button>
+                        <button onclick="clearGPSDatabase()" class="w-full text-[9px] text-rose-400 font-bold underline mt-1">清空記憶庫</button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- 策略看板 -->
+        <div id="strategyBoard" class="grid grid-cols-1 md:grid-cols-3 gap-6 hidden">
+            <div class="dashboard-card focus-gradient p-6 text-white relative overflow-hidden">
+                <div class="relative z-10">
+                    <p class="text-[10px] font-black text-green-300 uppercase tracking-widest mb-1">重點客戶 缺訪之首</p>
+                    <h2 id="topMajorA" class="text-xl font-black truncate">等待數據匯入...</h2>
+                    <p class="text-sm font-bold mt-2 text-green-100">本月尚欠：<span id="topMajorACount" class="text-2xl text-amber-400">0</span> 次</p>
+                </div>
+                <svg class="absolute -right-4 -bottom-4 w-24 h-24 text-white/10" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg>
+            </div>
+            <div class="dashboard-card bg-slate-900 p-6 text-white relative overflow-hidden border-none">
+                <div class="relative z-10">
+                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">一般客戶 缺訪之首</p>
+                    <h2 id="topChainA" class="text-xl font-black truncate">等待數據匯入...</h2>
+                    <p class="text-sm font-bold mt-2 text-slate-300">本月尚欠：<span id="topChainACount" class="text-2xl text-blue-400">0</span> 次</p>
+                </div>
+                <svg class="absolute -right-4 -bottom-4 w-24 h-24 text-white/5" fill="currentColor" viewBox="0 0 24 24"><path d="M3 3h18v18H3V3m16 16V5H5v14h14M7 7h10v2H7V7m0 4h10v2H7v-2m0 4h7v2H7v-2z"></path></svg>
+            </div>
+            <div class="dashboard-card p-6 border-l-8 border-rose-500 flex flex-col justify-center">
+                <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 italic">本月剩餘衝刺天數</p>
+                <div class="flex items-baseline space-x-2">
+                    <h2 id="remainingDays" class="text-5xl font-black text-rose-600">0</h2>
+                    <span class="text-lg font-black text-slate-700">Days</span>
+                </div>
+                <p class="text-[10px] text-slate-400 mt-2 font-bold uppercase tracking-tighter">已排除 2026 國定假日與週末</p>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <div class="lg:col-span-3 space-y-6">
+                <section class="dashboard-card p-6 space-y-6">
+                    <div>
+                        <h2 class="text-[11px] font-black text-slate-400 uppercase mb-4 tracking-tighter">1. 數據匯入</h2>
+                        <div id="dropZone" class="border-2 border-dashed border-slate-200 rounded-3xl p-8 flex flex-col items-center justify-center cursor-pointer hover:border-[#006d33] hover:bg-green-50 transition-all bg-slate-50/50">
+                            <svg class="w-10 h-10 text-[#006d33] mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                            <p id="fileName" class="text-[11px] font-black text-slate-500 text-center italic leading-tight">拖放 Excel 統計表或點擊</p>
+                            <input type="file" id="fileInput" class="hidden" accept=".xlsx, .xls">
+                        </div>
+                    </div>
+                    <div>
+                        <h2 class="text-[11px] font-black text-slate-400 uppercase mb-4 tracking-widest">2. 分析月份</h2>
+                        <div class="grid grid-cols-4 gap-2">
+                            <script>for(let i=1; i<=12; i++) document.write(`<button onclick="selectMonth(${i})" id="mBtn-${i}" class="month-btn">${i}月</button>`);</script>
+                        </div>
+                    </div>
+                </section>
+                <section id="actionCenter" class="dashboard-card overflow-hidden hidden animate-in slide-in-from-left duration-500">
+                    <div class="bg-slate-900 p-6 font-black text-white text-sm uppercase italic">智慧行程中心</div>
+                    <div class="p-6 space-y-6">
+                        <div id="groupFilterContainer" class="flex flex-col gap-2.5"></div>
+                        <div class="pt-6 border-t border-slate-100 space-y-3">
+                            <button onclick="toggleMissingOnly()" id="missingToggleBtn" class="w-full py-4 rounded-2xl text-xs font-black border border-rose-200 text-rose-600 bg-rose-50">隱藏已達標店家</button>
+                            <button onclick="triggerExport()" class="w-full bg-[#006d33] text-white py-4 rounded-2xl font-black text-sm shadow-xl flex items-center justify-center">匯出導航 CSV</button>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <div class="lg:col-span-9 space-y-6">
+                <div id="statsRow" class="grid grid-cols-2 md:grid-cols-4 gap-4 hidden font-black">
+                    <div class="dashboard-card p-6 border-b-4 border-slate-800 bg-slate-800 text-white"><p class="text-[10px] text-slate-400 mb-1 tracking-tighter">區域總店數</p><h3 id="statTotal" class="text-3xl">0</h3></div>
+                    <div class="dashboard-card p-6 border-b-4 border-[#006d33]"><p class="text-[10px] text-slate-400 mb-1 tracking-tighter">本月已巡店</p><h3 id="statMet" class="text-3xl text-[#006d33]">0</h3></div>
+                    <div class="dashboard-card p-6 border-b-4 border-[#a68d5b]"><p class="text-[10px] text-slate-400 mb-1 tracking-tighter">行程勾選數</p><h3 id="statSelected" class="text-3xl text-[#a68d5b]">0</h3></div>
+                    <div class="dashboard-card p-6 border-b-4 border-rose-500"><p class="text-[10px] text-slate-400 mb-1 tracking-tighter">當前缺訪數</p><h3 id="statMissing" class="text-3xl text-rose-600">0</h3></div>
+                </div>
+
+                <div class="dashboard-card overflow-hidden flex flex-col min-h-[780px] shadow-xl border-t-0">
+                    <div class="p-6 border-b bg-white flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <input type="text" id="searchInput" 
+                               onfocus="this.value=''; renderDashboard();"
+                               placeholder="🔍 全域搜尋：點一下自動清空並開始搜尋新店家..." 
+                               class="flex-1 px-6 py-4 bg-slate-50 border-none rounded-3xl text-sm font-bold focus:ring-2 focus:ring-[#006d33] outline-none shadow-inner transition-all">
+                        <div class="flex space-x-2">
+                            <button onclick="toggleAllCheckboxes()" class="px-6 py-4 text-xs font-black rounded-2xl bg-slate-100 border shadow-sm">全選 / 取消全選</button>
+                            <button onclick="resetAllFilters()" class="px-6 py-4 text-xs font-black rounded-2xl bg-slate-900 text-white shadow-sm">重置全部</button>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto custom-scrollbar flex-1">
+                        <table class="w-full text-left border-collapse">
+                            <thead class="bg-slate-50 text-slate-400 text-[10px] uppercase tracking-widest font-black sticky top-0 z-20 border-b">
+                                <tr>
+                                    <th class="px-8 py-5 text-center w-20">選取</th>
+                                    <th class="px-6 py-5">店家品牌與資訊</th>
+                                    <th class="px-6 py-5">通路別</th>
+                                    <th class="px-6 py-5 text-center">階級</th>
+                                    <th class="px-6 py-5 text-center">次數</th>
+                                    <th class="px-6 py-5">狀態</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tableBody" class="divide-y divide-slate-50 text-sm font-medium"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div id="converterModal" class="modal">
+        <div class="bg-white rounded-3xl p-8 w-[650px] shadow-2xl relative border-t-8 border-amber-400">
+            <div class="flex justify-between items-start mb-4">
+                <div>
+                    <h2 class="text-xl font-black text-slate-800">座標庫管理工具</h2>
+                    <p class="text-[10px] text-slate-400 font-bold mt-1 italic uppercase">將「代碼 緯度 經度」貼入下框進行批量注入</p>
+                </div>
+                <span id="modalCustomCount" class="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-[10px] font-black tracking-tighter">庫內資料: 0 筆</span>
+            </div>
+            <textarea id="converterInput" class="w-full h-64 bg-slate-50 border rounded-2xl p-5 text-xs font-mono outline-none focus:ring-2 focus:ring-amber-500" placeholder="請在此貼入資料..."></textarea>
+            <div class="mt-6 grid grid-cols-2 gap-3">
+                <button onclick="injectBatchGPS()" class="bg-amber-500 text-white py-3 rounded-2xl font-black text-sm shadow-md hover:bg-amber-600 transition-all">🚀 批量注入記憶</button>
+                <button onclick="generatePermanentCode()" class="bg-slate-800 text-white py-3 rounded-2xl font-black text-sm shadow-md hover:bg-black transition-all">💾 生成存檔代碼</button>
+            </div>
+            <div class="flex justify-center mt-4"><button onclick="closeModal('converterModal')" class="text-slate-400 font-bold px-4 text-xs">暫不處理，關閉視窗</button></div>
+        </div>
+    </div>
+
+    <div id="settingsModal" class="modal">
+        <div class="bg-white rounded-3xl p-8 w-[750px] shadow-2xl overflow-y-auto max-h-[90vh] border-t-8 border-[#006d33]">
+            <h2 class="text-xl font-black mb-6 border-b pb-4">業務規則定義</h2>
+            <div class="grid grid-cols-2 gap-8 mb-6">
+                <div><h3 class="font-black text-xs mb-4 uppercase">到訪頻次 (每月)</h3><textarea id="ruleSettingInput" class="w-full h-64 bg-slate-50 border rounded-2xl p-4 text-xs font-mono"></textarea></div>
+                <div><h3 class="font-black text-xs mb-4 uppercase">標籤分類</h3><textarea id="groupSettingInput" class="w-full h-64 bg-slate-50 border rounded-2xl p-4 text-xs font-mono"></textarea></div>
+            </div>
+            <div class="flex justify-end space-x-4 border-t pt-6"><button onclick="closeModal('settingsModal')" class="px-6 py-3 font-bold text-slate-400">取消</button><button onclick="saveSettings()" class="bg-[#006d33] text-white px-10 py-3 rounded-2xl font-black">套用</button></div>
+        </div>
+    </div>
+
+    <div id="toast" class="hidden fixed bottom-10 left-1/2 -translate-x-1/2 z-[500] bg-slate-900 text-white px-10 py-4 rounded-full shadow-2xl font-black text-sm border border-slate-700">通知訊息</div>
+
+    <script>
+        // --------------------------------------------------------------------------------------
+        // 【Luke_Tian 座標永久存檔區】
+        // 請將轉換好的座標貼在下方的 INTERNAL_DB 大括號 {} 之中即可存檔：
+        // --------------------------------------------------------------------------------------
+        const INTERNAL_DB = {
+            "範例店家代碼": [24.858087, 121.2176069],
+            // 請將你的代碼貼在下方：
+            
+        };
+
+        let LOCAL_GPS = JSON.parse(localStorage.getItem('luketian_gps_db')) || {};
+        let GPS_DB = { ...INTERNAL_DB, ...LOCAL_GPS };
+
+        const BRAND_COLORS = { "統一": "from-orange-500 to-orange-600", "全家": "from-blue-500 to-blue-600", "萊爾富": "from-red-500 to-red-600", "美廉社": "from-rose-600 to-rose-700", "OK": "from-red-700 to-red-800", "全聯": "from-blue-800 to-blue-900", "即飲通路": "from-indigo-500 to-indigo-600", "傳統通路": "from-slate-500 to-slate-600" };
+        let RULES = { "五大A": 8, "五大B": 4, "五大C": 2, "連鎖超市A": 4, "連鎖超市B": 2, "系統店A": 2, "A": 2, "B": 1, "CVS": 1, "A級": 2, "B級": 1, "C級": 1 };
+        let GROUPS_CONFIG = { "季訪-C級客戶": ['C級', 'C 級', 'C', '連鎖超市C'], "傳統客戶": ['B級', 'B 級', '五大A', '五大B', '五大BG', '五大C', '系統店A', '系統店B', 'B'], "連鎖通路": ['CVS', '連鎖超市C'], "全聯福利": ['連鎖超市A', '連鎖超市B'], "餐飲即飲": ['A級', 'B級', 'C級'] };
+        
+        let workbookData = null, results = [], currentMonth = new Date().getMonth() + 1;
+        let selectedGroups = new Set(), selectedCodes = new Set(), showMissingOnly = false;
+        const HOLIDAYS_2026 = ["2026-01-01","2026-02-16","2026-02-17","2026-02-18","2026-02-19","2026-02-20","2026-02-21","2026-02-22","2026-02-28","2026-04-03","2026-04-04","2026-04-05","2026-04-06","2026-05-01","2026-06-19","2026-09-25","2026-10-10"];
+
+        function updateGPSCountUI() {
+            const count = Object.keys(GPS_DB).length;
+            const customCountEl = document.getElementById('customCount'); if (customCountEl) customCountEl.textContent = count;
+            const modalCountEl = document.getElementById('modalCustomCount'); if (modalCountEl) modalCountEl.textContent = `庫內資料: ${count} 筆`;
+        }
+
+        function calculateRemainingWorkDays(month) {
+            let today = new Date(); let currY = today.getFullYear(); let currM = today.getMonth() + 1;
+            if (month < currM) return 0;
+            let start = (month === currM) ? new Date(today) : new Date(currY, month - 1, 1);
+            let end = new Date(currY, month, 0);
+            let count = 0;
+            for(let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                let day = d.getDay();
+                let ds = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, '0') + "-" + String(d.getDate()).padStart(2, '0');
+                if (day !== 0 && day !== 6 && !HOLIDAYS_2026.includes(ds)) count++;
+            }
+            return count;
+        }
+
+        document.addEventListener('DOMContentLoaded', updateGPSCountUI);
+        function saveGPSDB() { localStorage.setItem('luketian_gps_db', JSON.stringify(LOCAL_GPS)); GPS_DB = { ...INTERNAL_DB, ...LOCAL_GPS }; updateGPSCountUI(); }
+        function toggleCustomGps() { let p = document.getElementById('customGpsPanel'); p.style.display = (p.style.display === 'block') ? 'none' : 'block'; }
+        function openModal(id) { if(id === 'settingsModal') { document.getElementById('ruleSettingInput').value = JSON.stringify(RULES, null, 2); document.getElementById('groupSettingInput').value = JSON.stringify(GROUPS_CONFIG, null, 2); } const m = document.getElementById(id); if(m) m.style.display = 'flex'; }
+        function closeModal(id) { const m = document.getElementById(id); if(m) m.style.display = 'none'; }
+
+        function injectBatchGPS() {
+            const input = document.getElementById('converterInput').value.trim().split('\n');
+            input.forEach(line => {
+                const p = line.trim().split(/\s+/);
+                if(p.length >= 3) { const lat = parseFloat(p[1]); if(!isNaN(lat)) LOCAL_GPS[p[0]] = [lat, parseFloat(p[2])]; }
+            });
+            saveGPSDB(); showToast("🚀 座標已連動記憶！"); document.getElementById('converterInput').value = ""; if(workbookData) processData();
+        }
+
+        function generatePermanentCode() {
+            let s = ""; for (let c in GPS_DB) s += `"${c}": [${GPS_DB[c][0]}, ${GPS_DB[c][1]}],\n`;
+            document.getElementById('converterInput').value = s; document.getElementById('converterInput').select(); document.execCommand('copy');
+            showToast("📋 存檔代碼已複製！");
+        }
+
+        const dropZone = document.getElementById('dropZone'), fileInput = document.getElementById('fileInput');
+        dropZone.onclick = () => fileInput.click();
+        dropZone.ondragover = e => { e.preventDefault(); dropZone.classList.add('bg-green-100'); };
+        dropZone.ondragleave = () => dropZone.classList.remove('bg-green-100');
+        dropZone.ondrop = e => { e.preventDefault(); dropZone.classList.remove('bg-green-100'); handleFile(e.dataTransfer.files[0]); };
+        fileInput.onchange = e => handleFile(e.target.files[0]);
+
+        function handleFile(f) {
+            if(!f) return;
+            const r = new FileReader();
+            r.onload = (e) => {
+                workbookData = XLSX.utils.sheet_to_json(XLSX.read(new Uint8Array(e.target.result), {type:'array'}).Sheets[XLSX.read(new Uint8Array(e.target.result), {type:'array'}).SheetNames[0]], {header:1});
+                document.getElementById('fileStatus').classList.remove('hidden');
+                document.getElementById('strategyBoard').classList.remove('hidden');
+                processData();
+            };
+            r.readAsArrayBuffer(f);
+        }
+
+        function selectMonth(m) {
+            document.querySelectorAll('.month-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(`mBtn-${m}`).classList.add('active');
+            currentMonth = m; document.getElementById('remainingDays').textContent = calculateRemainingWorkDays(m);
+            if(workbookData) processData();
+        }
+
+        function processData() {
+            if(!workbookData) return;
+            const qMonths = [ [1,2,3], [4,5,6], [7,8,9], [10,11,12] ].find(q => q.includes(currentMonth));
+            results = [];
+            let topMajorA = { name: "無", count: -1 }, topChainA = { name: "無", count: -1 };
+
+            for (let i = 3; i < workbookData.length; i++) {
+                const row = workbookData[i]; if (!row || !row[2]) continue;
+                const code = String(row[2]).trim(); const gradeRaw = String(row[5]||"").trim();
+                let grade = gradeRaw === "A" ? "A級" : gradeRaw === "B" ? "B級" : gradeRaw === "C" ? "C級" : gradeRaw;
+                if (String(row[4]) === "結束營業" || grade === "CVST") continue;
+
+                const actual = parseInt(row[7 + (currentMonth - 1) * 2]) || 0;
+                let required = Number(RULES[grade]) || 0; 
+                let isMetFlag = false;
+                
+                // 修正：使用精準的陣列比對，避免「五大C」被誤判為季度 C 級
+                let isQuarterlyC = GROUPS_CONFIG["季訪-C級客戶"].includes(grade);
+                if (isQuarterlyC) {
+                    required = 1; let qSum = 0; qMonths.forEach(m => qSum += (parseInt(workbookData[i][7 + (m - 1) * 2]) || 0)); isMetFlag = qSum >= 1;
+                } else { isMetFlag = actual >= required; }
+                
+                const missingCount = Math.max(0, required - actual);
+                const combinedName = row[0] ? `${row[0]}-${row[1]}` : row[1];
+                if((grade === "五大A" || grade === "A級") && missingCount > topMajorA.count) topMajorA = { name: combinedName, count: missingCount };
+                if((grade === "連鎖超市A" || grade === "B級") && missingCount > topChainA.count) topChainA = { name: combinedName, count: missingCount };
+
+                results.push({ type: String(row[0]||""), name: combinedName, code, channel: row[3]||"", grade, actual, required, isMet: isMetFlag, gps: GPS_DB[code]||null, group: Object.keys(GROUPS_CONFIG).find(k => GROUPS_CONFIG[k].includes(grade)) || "無效" });
+            }
+            document.getElementById('topMajorA').textContent = topMajorA.name;
+            document.getElementById('topMajorACount').textContent = Math.max(0, topMajorA.count);
+            document.getElementById('topChainA').textContent = topChainA.name;
+            document.getElementById('topChainACount').textContent = Math.max(0, topChainA.count);
+            document.getElementById('actionCenter').classList.remove('hidden');
+            renderDashboard();
+        }
+
+        function toggleFilter(g) { 
+            if(selectedGroups.has(g)) { 
+                selectedGroups.delete(g); 
+                results.forEach(i => { if(i.group === g && !i.isMet) selectedCodes.delete(i.code); }); 
+            } else { 
+                selectedGroups.add(g); 
+                results.forEach(i => { if(i.group === g && i.actual < i.required) { selectedCodes.add(i.code); } }); 
+            }
+            renderDashboard(); 
+        }
+
+        function getFilteredResults() {
+            const s = document.getElementById('searchInput').value.trim().toLowerCase();
+            return results.filter(i => {
+                const matchSearch = i.name.toLowerCase().includes(s) || i.code.toLowerCase().includes(s);
+                if(s !== "") return matchSearch && (!showMissingOnly || !i.isMet);
+                return (selectedGroups.size === 0 || selectedGroups.has(i.group)) && (!showMissingOnly || !i.isMet);
+            });
+        }
+
+        function renderDashboard() {
+            const filtered = getFilteredResults();
+            const body = document.getElementById('tableBody');
+            body.innerHTML = filtered.length ? "" : '<tr><td colspan="6" class="p-32 text-center opacity-30 italic font-black">查無符合資料</td></tr>';
+            filtered.forEach(item => {
+                const brandKey = Object.keys(BRAND_COLORS).find(k => item.type.includes(k)) || (item.channel === "即飲通路" ? "即飲通路" : "傳統通路");
+                const label = (brandKey === "傳統通路") ? "TRAD" : (brandKey === "全聯") ? "PX" : (brandKey === "美廉社") ? "SIMP" : brandKey === "即飲通路" ? "ON" : brandKey.substring(0,4);
+                
+                const tr = document.createElement('tr');
+                const isShort = item.actual < item.required;
+                tr.className = isShort ? 'bg-rose-50/60 hover:bg-rose-100 transition-colors' : 'bg-white hover:bg-slate-50 transition-colors';
+                
+                tr.innerHTML = `<td class="px-8 py-4 text-center"><input type="checkbox" class="custom-checkbox" ${selectedCodes.has(item.code) ? 'checked' : ''} onchange="handleSelection('${item.code}', this.checked)"></td>
+                    <td class="px-6 py-4 flex items-center space-x-4">
+                        <div class="brand-logo bg-gradient-to-br ${BRAND_COLORS[brandKey] || 'from-slate-500 to-slate-600'}">${label}</div>
+                        <div><div class="font-black text-slate-800 text-[13px] leading-tight">${item.name}</div><div class="text-[10px] text-slate-400 font-mono mt-1">${item.code}</div></div>
+                    </td>
+                    <td class="px-6 py-4 font-bold text-slate-600 text-[11px]">${item.channel}</td>
+                    <td class="px-6 py-4 text-center"><span class="text-[10px] font-black px-2 py-1 bg-white border rounded-lg shadow-sm">${item.grade}</span></td>
+                    <td class="px-6 py-4 text-center font-black"><span class="${!isShort ? 'text-emerald-600' : 'text-rose-600'} text-base">${item.actual}</span><span class="text-slate-300 text-xs"> / ${item.required}</span></td>
+                    <td class="px-6 py-4 text-[10px] font-black ${item.gps ? 'text-slate-400':'text-rose-400'}">${item.gps ? '座標鎖定' : '代碼遺失'}</td>`;
+                body.appendChild(tr);
+            });
+            document.getElementById('groupFilterContainer').innerHTML = Object.keys(GROUPS_CONFIG).map(g => {
+                const count = results.filter(r => r.group === g && !r.isMet).length;
+                let activeClass = selectedGroups.has(g) ? (g.includes('C級') ? ' c-grade-tag active' : ' active') : '';
+                return `<div onclick="toggleFilter('${g}')" class="group-tag${activeClass}"><span class="text-[13px]">${g}</span><span class="${count > 0 ? 'text-rose-500':'text-slate-300'} font-black text-[11px]">${count}</span></div>`;
+            }).join('');
+            document.getElementById('statTotal').textContent = results.length;
+            document.getElementById('statMet').textContent = results.filter(r => r.isMet).length;
+            document.getElementById('statMissing').textContent = filtered.filter(r => !r.isMet).length;
+            document.getElementById('statSelected').textContent = selectedCodes.size;
+        }
+
+        function handleSelection(code, check) { if(check) selectedCodes.add(code); else selectedCodes.delete(code); document.getElementById('statSelected').textContent = selectedCodes.size; }
+        function toggleAllCheckboxes() { const vis = getFilteredResults(); const all = vis.every(i => selectedCodes.has(i.code)); vis.forEach(i => all ? selectedCodes.delete(i.code) : selectedCodes.add(i.code)); renderDashboard(); }
+        document.getElementById('searchInput').addEventListener('input', renderDashboard);
+        function toggleMissingOnly() { showMissingOnly = !showMissingOnly; renderDashboard(); }
+        function resetAllFilters() { selectedGroups.clear(); selectedCodes.clear(); showMissingOnly = false; document.getElementById('searchInput').value = ""; renderDashboard(); }
+
+        function triggerExport() {
+            const exp = selectedCodes.size ? results.filter(r => selectedCodes.has(r.code) && r.gps) : getFilteredResults().filter(r => r.gps);
+            if (!exp.length) return showToast("ℹ️ 無可匯出座標");
+            let csv = "店家名稱,Latitude,Longitude,店家代碼,通路別,階級,實訪次數,應訪次數\n";
+            exp.forEach(i => csv += `"${i.name}",${i.gps[0]},${i.gps[1]},"${i.code}","${i.channel}","${i.grade}",${i.actual},${i.required}\n`);
+            const blob = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a"); link.href = URL.createObjectURL(blob);
+            link.download = `${currentMonth}月_Luke精選行程.csv`; link.click();
+            showToast(`🚀 下載 ${exp.length} 筆導航資料！`);
+        }
+
+        function showToast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.remove('hidden', 'opacity-0'); t.style.display = 'block'; setTimeout(() => { t.classList.add('opacity-0'); setTimeout(()=>t.style.display='none', 500); }, 3000); }
+        function clearGPSDatabase() { if(confirm("確定要清空 Luke_Tian 的本地座標庫嗎？")) { localStorage.removeItem('luketian_gps_db'); LOCAL_GPS = {}; saveGPSDB(); if(workbookData) processData(); showToast("🗑️ 記憶庫已清空"); } }
+        function addCustomGPS() {
+            const code = document.getElementById('customCode').value.trim();
+            const lat = parseFloat(document.getElementById('customLat').value), lng = parseFloat(document.getElementById('customLng').value);
+            if (!code || isNaN(lat)) return showToast("⚠️ 格式錯誤");
+            LOCAL_GPS[code] = [lat, lng]; saveGPSDB();
+            document.getElementById('customCode').value = ''; document.getElementById('customLat').value = ''; document.getElementById('customLng').value = '';
+            if(workbookData) processData(); showToast("✅ 座標已儲存");
+        }
+        function saveSettings() { try { RULES = JSON.parse(document.getElementById('ruleSettingInput').value); GROUPS_CONFIG = JSON.parse(document.getElementById('groupSettingInput').value); showToast("✅ 設定已更新"); closeModal('settingsModal'); if(workbookData) processData(); } catch(e) { showToast("❌ 格式錯誤"); } }
+    </script>
+</body>
+</html>
